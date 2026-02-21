@@ -59,25 +59,25 @@ CREATE POLICY "Allow public read access for categories" ON public.categories
     FOR SELECT USING (true);
 
 CREATE POLICY "Allow admin full access for categories" ON public.categories
-    ALL USING (auth.jwt() ->> 'email' = 'admin@shababy.com'); -- Update email as needed
+    FOR ALL USING (auth.jwt() ->> 'email' = 'admin@shababy.com'); -- Update email as needed
 
 -- Policies for Products
 CREATE POLICY "Allow public read access for products" ON public.products
     FOR SELECT USING (true);
 
 CREATE POLICY "Allow admin full access for products" ON public.products
-    ALL USING (auth.jwt() ->> 'email' = 'admin@shababy.com'); -- Update email as needed
+    FOR ALL USING (auth.jwt() ->> 'email' = 'admin@shababy.com'); -- Update email as needed
 
 -- Policies for Orders
 CREATE POLICY "Allow public to create orders" ON public.orders
     FOR INSERT WITH CHECK (true);
 
 CREATE POLICY "Allow admin full access for orders" ON public.orders
-    ALL USING (auth.jwt() ->> 'email' = 'admin@shababy.com');
+    FOR ALL USING (auth.jwt() ->> 'email' = 'admin@shababy.com');
 
 -- Policies for Messages
 CREATE POLICY "Allow public to send messages" ON public.messages
     FOR INSERT WITH CHECK (true);
 
 CREATE POLICY "Allow admin full access for messages" ON public.messages
-    ALL USING (auth.jwt() ->> 'email' = 'admin@shababy.com');
+    FOR ALL USING (auth.jwt() ->> 'email' = 'admin@shababy.com');
