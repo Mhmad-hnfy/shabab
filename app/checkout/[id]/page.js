@@ -1,0 +1,534 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
+
+export default function CheckoutPage() {
+  const { id } = useParams();
+  const router = useRouter();
+  const [product, setProduct] = useState(null);
+  const [quantity, setQuantity] = useState(1);
+  const [formData, setFormData] = useState({
+    name: "",
+    phone1: "",
+    phone2: "",
+    address: "",
+    paymentMethod: "عند الاستلام",
+    visaDetails: { number: "", expiry: "", cvc: "" },
+    walletNumber: "",
+  });
+  const [promoCode, setPromoCode] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState(null);
+  const [promoError, setPromoError] = useState("");
+  const [productsInCart, setProductsInCart] = useState([]);
+  const [isCartMode, setIsCartMode] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [activeImage, setActiveImage] = useState("");
+  const [settings, setSettings] = useState({
+    paymentMethods: { cash: true, visa: true, wallet: true },
+  });
+
+  useEffect(() => {
+    const savedProducts = JSON.parse(
+      localStorage.getItem("shababy_products") || "[]",
+    );
+
+    if (id === "cart") {
+      setIsCartMode(true);
+      const cart = JSON.parse(localStorage.getItem("shababy_cart") || "[]");
+      // Map cart items to enriched product data
+      const enriched = cart.map((item) => {
+        const full = savedProducts.find((p) => p.id === item.id);
+        return { ...item, ...full }; // Keep cart quantity, but get settings from full product
+      });
+      setProductsInCart(enriched);
+      setLoading(false);
+    } else {
+      const found = savedProducts.find((p) => p.id.toString() === id);
+      if (found) {
+        setProduct(found);
+        setProductsInCart([{ ...found, quantity: 1 }]);
+        setActiveImage(found.image);
+      }
+      setLoading(false);
+    }
+
+    const savedSettings = localStorage.getItem("shababy_settings");
+    if (savedSettings) {
+      const parsed = JSON.parse(savedSettings);
+      setSettings(parsed);
+      // Set initial method to a valid one
+      if (parsed.paymentMethods.cash)
+        setFormData((prev) => ({ ...prev, paymentMethod: "عند الاستلام" }));
+      else if (parsed.paymentMethods.visa)
+        setFormData((prev) => ({ ...prev, paymentMethod: "فيزا" }));
+      else if (parsed.paymentMethods.wallet)
+        setFormData((prev) => ({ ...prev, paymentMethod: "محفظة" }));
+    }
+  }, [id]);
+
+  if (loading)
+    return (
+      <div className="min-h-screen flex items-center justify-center font-black">
+        جاري تحميل البيانات...
+      </div>
+    );
+
+  if (!isCartMode && !product)
+    return (
+      <div className="min-h-screen flex items-center justify-center font-black">
+        عذراً، المنتج غير موجود
+      </div>
+    );
+
+  // Calculate pricing based on productsInCart
+  const subtotal = productsInCart.reduce((sum, p) => {
+    const disc =
+      p.discountPercent > 0
+        ? parseFloat(p.price) * (p.discountPercent / 100)
+        : 0;
+    return sum + (parseFloat(p.price) - disc) * p.quantity;
+  }, 0);
+
+  let promoDiscount = 0;
+  if (appliedPromo) {
+    promoDiscount = subtotal * (appliedPromo.discountPercent / 100);
+  }
+
+  const total = subtotal - promoDiscount;
+
+  const handleApplyPromo = () => {
+    setPromoError("");
+    const promos = JSON.parse(localStorage.getItem("shababy_promos") || "[]");
+    const found = promos.find(
+      (p) => p.code === promoCode.toUpperCase() && p.isActive,
+    );
+
+    if (found) {
+      setAppliedPromo(found);
+      setPromoCode("");
+    } else {
+      setPromoError("كود الخصم غير صالح أو منتهي الصلاحية");
+    }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const orderId = `ORD-${Math.floor(Math.random() * 90000) + 10000}`;
+    const productNames = productsInCart
+      .map((p) => `${p.name} (x${p.quantity})`)
+      .join(", ");
+
+    const newOrder = {
+      id: orderId,
+      customer: formData.name,
+      phones: [formData.phone1, formData.phone2],
+      address: formData.address,
+      product: productNames,
+      quantity: productsInCart.reduce((sum, p) => sum + p.quantity, 0),
+      subtotal: `${subtotal.toFixed(2)} EGP`,
+      promoCode: appliedPromo ? appliedPromo.code : null,
+      total: `${total.toFixed(2)} EGP`,
+      paymentMethod: formData.paymentMethod,
+      date: new Date().toLocaleDateString("ar-EG"),
+      status: "new",
+    };
+
+    const orders = JSON.parse(localStorage.getItem("shababy_orders") || "[]");
+    localStorage.setItem(
+      "shababy_orders",
+      JSON.stringify([...orders, newOrder]),
+    );
+
+    if (isCartMode) {
+      localStorage.removeItem("shababy_cart");
+      window.dispatchEvent(new Event("cart-updated"));
+    }
+
+    router.push(`/invoice/${orderId}`);
+  };
+
+  const allImages = isCartMode
+    ? []
+    : [product.image, ...(product.images || [])].filter(Boolean);
+
+  const isMethodSupported = (method) => {
+    const globalEnabled = settings.paymentMethods[method];
+    if (!globalEnabled) return false;
+    // Check if ALL products in cart support this method
+    return productsInCart.every(
+      (p) => !p.paymentSettings || p.paymentSettings[method] === true,
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-background py-20 px-6">
+      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16">
+        {/* Order Summary */}
+        <div className="flex flex-col gap-10">
+          <h1 className="text-4xl font-black text-foreground">مراجعة طلبك</h1>
+
+          <div className="bg-card border border-border p-8 rounded-[3rem] shadow-xl flex flex-col gap-8">
+            {!isCartMode ? (
+              <div className="flex flex-col md:flex-row items-start md:items-center gap-8 border-b border-border pb-8">
+                <div className="flex flex-col gap-4 shrink-0">
+                  <div className="size-48 bg-foreground/5 rounded-[2.5rem] border border-border p-6 shadow-sm overflow-hidden flex items-center justify-center relative">
+                    <img
+                      src={
+                        activeImage ||
+                        "https://raw.githubusercontent.com/prebuiltui/prebuiltui/main/assets/card/productImageWithoutBg.png"
+                      }
+                      alt=""
+                      className="w-full h-full object-contain animate-fade-in"
+                      key={activeImage}
+                    />
+                  </div>
+                  {allImages.length > 1 && (
+                    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none justify-center">
+                      {allImages.map((img, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setActiveImage(img)}
+                          className={`size-12 shrink-0 rounded-xl border-2 transition-all p-1 overflow-hidden ${activeImage === img ? "border-secondary bg-secondary/5 shadow-lg shadow-secondary/10" : "border-border bg-foreground/5 hover:border-foreground/20"}`}
+                        >
+                          <img
+                            src={img}
+                            alt=""
+                            className="w-full h-full object-contain"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <span className="px-3 py-1 bg-secondary/10 text-secondary text-[10px] font-black rounded-full w-fit">
+                    {product.category}
+                  </span>
+                  <h2 className="text-3xl font-black text-foreground">
+                    {product.name}
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl font-black text-secondary">
+                      {(
+                        parseFloat(product.price) *
+                        (1 - product.discountPercent / 100)
+                      ).toFixed(2)}{" "}
+                      EGP
+                    </span>
+                    {product.discountPercent > 0 && (
+                      <span className="text-sm font-bold text-foreground/20 line-through">
+                        {product.price} EGP
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-4 border-b border-border pb-8 max-h-[400px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-border">
+                {productsInCart.map((p, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-4 bg-foreground/5 p-4 rounded-2xl"
+                  >
+                    <div className="size-16 bg-foreground/5 rounded-xl border border-border p-2 shrink-0">
+                      <img
+                        src={p.image}
+                        alt=""
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                    <div className="flex-1 flex flex-col">
+                      <span className="font-black text-foreground text-sm truncate">
+                        {p.name}
+                      </span>
+                      <span className="text-xs font-bold text-secondary">
+                        {(
+                          parseFloat(p.price) *
+                          (1 - p.discountPercent / 100)
+                        ).toFixed(2)}{" "}
+                        EGP x {p.quantity}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!isCartMode && (
+              <div className="flex items-center justify-between p-6 bg-foreground/5 rounded-2xl">
+                <span className="font-bold text-foreground">الكمية</span>
+                <div className="flex items-center gap-6">
+                  <button
+                    type="button"
+                    onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                    className="size-10 bg-foreground/5 border border-border rounded-xl font-black active:scale-90 transition-all"
+                  >
+                    -
+                  </button>
+                  <span className="text-xl font-black">{quantity}</span>
+                  <button
+                    type="button"
+                    onClick={() => setQuantity(quantity + 1)}
+                    className="size-10 bg-foreground/5 border border-border rounded-xl font-black active:scale-90 transition-all"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Promo Code Input */}
+            <div className="flex flex-col gap-3">
+              <label className="text-[10px] font-black text-foreground/30 uppercase tracking-widest mr-2">
+                كود الخصم
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={promoCode}
+                  onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                  className="flex-1 bg-foreground/5 border border-border p-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-secondary/50 font-black tracking-widest text-sm"
+                  placeholder="CODE"
+                />
+                <button
+                  type="button"
+                  onClick={handleApplyPromo}
+                  className="px-6 bg-foreground text-background font-black rounded-xl hover:opacity-90 active:scale-95 transition-all text-xs"
+                >
+                  تطبيق
+                </button>
+              </div>
+              {promoError && (
+                <span className="text-[10px] font-bold text-red-500 mr-2">
+                  {promoError}
+                </span>
+              )}
+              {appliedPromo && (
+                <span className="text-[10px] font-bold text-green-600 mr-2">
+                  ✅ تم تطبيق خصم {appliedPromo.discountPercent}% بنجاح!
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-4 border-t border-border pt-8">
+              <div className="flex justify-between text-foreground/40 font-bold">
+                <span>المجموع الفرعي</span>
+                <span>{subtotal.toFixed(2)} EGP</span>
+              </div>
+              {appliedPromo && (
+                <div className="flex justify-between text-secondary font-bold">
+                  <span>خصم الكود ({appliedPromo.code})</span>
+                  <span>-{promoDiscount.toFixed(2)} EGP</span>
+                </div>
+              )}
+              <div className="flex justify-between text-foreground/40 font-bold">
+                <span>تكلفة الشحن</span>
+                <span className="text-green-500">مجاني</span>
+              </div>
+              <div className="flex justify-between items-center pt-4">
+                <span className="text-2xl font-black">الإجمالي</span>
+                <span className="text-4xl font-black text-secondary">
+                  {total.toFixed(2)} EGP
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Customer Form */}
+        <form
+          onSubmit={handleSubmit}
+          className="bg-card border border-border p-10 rounded-[3.5rem] shadow-2xl flex flex-col gap-8"
+        >
+          <div className="flex flex-col gap-2">
+            <h2 className="text-2xl font-black text-foreground">
+              معلومات الشحن
+            </h2>
+            <p className="text-foreground/40 font-bold">
+              يرجى إدخال تفاصيلك بدقة لضمان وصول الطلب
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6">
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-black text-foreground/40 mr-2 uppercase tracking-widest">
+                الاسم الكامل
+              </label>
+              <input
+                type="text"
+                required
+                value={formData.name}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
+                className="w-full bg-foreground/5 border border-border p-5 rounded-2xl focus:outline-none focus:ring-2 focus:ring-secondary/50 font-bold"
+                placeholder="أدخل اسمك بالكامل"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-black text-foreground/40 mr-2 uppercase">
+                  رقم الهاتف 1
+                </label>
+                <input
+                  type="tel"
+                  required
+                  value={formData.phone1}
+                  onChange={(e) =>
+                    setFormData({ ...formData, phone1: e.target.value })
+                  }
+                  className="w-full bg-foreground/5 border border-border p-5 rounded-2xl focus:outline-none focus:ring-2 focus:ring-secondary/50 font-bold"
+                  placeholder="010XXXXXXXX"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-black text-foreground/40 mr-2 uppercase">
+                  رقم الهاتف 2
+                </label>
+                <input
+                  type="tel"
+                  required
+                  value={formData.phone2}
+                  onChange={(e) =>
+                    setFormData({ ...formData, phone2: e.target.value })
+                  }
+                  className="w-full bg-foreground/5 border border-border p-5 rounded-2xl focus:outline-none focus:ring-2 focus:ring-secondary/50 font-bold"
+                  placeholder="رقم هاتف بديل للأهمية"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-black text-foreground/40 mr-2 uppercase tracking-widest">
+                العنوان بالتفصيل
+              </label>
+              <textarea
+                required
+                value={formData.address}
+                onChange={(e) =>
+                  setFormData({ ...formData, address: e.target.value })
+                }
+                className="w-full bg-foreground/5 border border-border p-5 rounded-2xl focus:outline-none focus:ring-2 focus:ring-secondary/50 font-bold min-h-[100px] resize-none"
+                placeholder="المحافظة، المدينة، اسم الشارع، رقم المبنى والشقة"
+              />
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <label className="text-xs font-black text-foreground/40 mr-2 uppercase">
+                طريقة الدفع
+              </label>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {isMethodSupported("visa") && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData({ ...formData, paymentMethod: "فيزا" })
+                    }
+                    className={`py-4 rounded-xl text-xs font-black transition-all border-2 ${formData.paymentMethod === "فيزا" ? "bg-foreground text-background border-foreground" : "bg-transparent border-border text-foreground/40 hover:border-foreground/20"}`}
+                  >
+                    فيزا
+                  </button>
+                )}
+                {isMethodSupported("wallet") && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData({ ...formData, paymentMethod: "محفظة" })
+                    }
+                    className={`py-4 rounded-xl text-xs font-black transition-all border-2 ${formData.paymentMethod === "محفظة" ? "bg-foreground text-background border-foreground" : "bg-transparent border-border text-foreground/40 hover:border-foreground/20"}`}
+                  >
+                    محفظة
+                  </button>
+                )}
+                {isMethodSupported("fawry") && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData({ ...formData, paymentMethod: "فوري" })
+                    }
+                    className={`py-4 rounded-xl text-xs font-black transition-all border-2 ${formData.paymentMethod === "فوري" ? "bg-foreground text-background border-foreground" : "bg-transparent border-border text-foreground/40 hover:border-foreground/20"}`}
+                  >
+                    فوري
+                  </button>
+                )}
+                {isMethodSupported("cash") && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData({
+                        ...formData,
+                        paymentMethod: "عند الاستلام",
+                      })
+                    }
+                    className={`py-4 rounded-xl text-xs font-black transition-all border-2 ${formData.paymentMethod === "عند الاستلام" ? "bg-foreground text-background border-foreground" : "bg-transparent border-border text-foreground/40 hover:border-foreground/20"}`}
+                  >
+                    عند الاستلام
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="p-6 bg-blue-500/5 border border-blue-500/20 rounded-3xl flex items-center gap-4">
+              <span className="text-2xl">📞</span>
+              <p className="text-sm font-black text-blue-600">
+                {settings.contactInfo?.checkoutNotice ||
+                  "سيتم التواصل خلال 24 ساعة لتأكيد طلبكم"}
+              </p>
+            </div>
+
+            {/* Conditional Payment Info */}
+            {formData.paymentMethod === "فيزا" && (
+              <div className="p-6 bg-foreground/5 rounded-3xl border border-border flex flex-col gap-4 animate-fade-in">
+                <input
+                  type="text"
+                  placeholder="رقم البطاقة"
+                  className="w-full bg-foreground/5 border border-border p-4 rounded-xl font-bold"
+                />
+                <div className="grid grid-cols-2 gap-4">
+                  <input
+                    type="text"
+                    placeholder="MM/YY"
+                    className="bg-foreground/5 border border-border p-4 rounded-xl font-bold"
+                  />
+                  <input
+                    type="text"
+                    placeholder="CVC"
+                    className="bg-foreground/5 border border-border p-4 rounded-xl font-bold"
+                  />
+                </div>
+              </div>
+            )}
+
+            {formData.paymentMethod === "محفظة" && (
+              <div className="p-6 bg-foreground/5 rounded-3xl border border-border flex flex-col gap-4 animate-fade-in">
+                <input
+                  type="tel"
+                  placeholder="رقم المحفظة (فودافون كاش، الخ)"
+                  className="w-full bg-foreground/5 border border-border p-4 rounded-xl font-bold"
+                />
+              </div>
+            )}
+
+            {formData.paymentMethod === "فوري" && (
+              <div className="p-6 bg-foreground/5 rounded-3xl border border-border text-center animate-fade-in">
+                <p className="text-sm font-bold text-foreground/60">
+                  سيتم إرسال كود فوري لهاتفك بعد إتمام الطلب
+                </p>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="w-full py-6 bg-foreground text-background font-black text-xl rounded-2xl shadow-2xl shadow-foreground/10 hover:opacity-90 active:scale-[0.98] transition-all mt-4"
+            >
+              إتمام الشراء والطلب
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
