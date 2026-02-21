@@ -1,46 +1,60 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
 
 export default function OrderList() {
   const [orders, setOrders] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchOrders();
+  }, []);
+
+  const fetchOrders = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching orders:", error);
+    } else {
+      setOrders(data || []);
+    }
+    setLoading(false);
+  };
 
   const openOrder = (order) => {
     setSelectedOrder(order);
-    if (!order.status || order.status === "new") {
-      const updated = orders.map((o) =>
-        o.id === order.id ? { ...o, status: "viewed" } : o,
-      );
-      setOrders(updated);
-      localStorage.setItem("shababy_orders", JSON.stringify(updated));
-      window.dispatchEvent(new Event("storage"));
+  };
+
+  const updateStatus = async (id, newStatus) => {
+    const { error } = await supabase
+      .from("orders")
+      .update({ status: newStatus })
+      .eq("id", id);
+
+    if (error) {
+      alert("خطأ في تحديث حالة الطلب");
+      console.error(error);
+    } else {
+      fetchOrders();
     }
   };
 
-  useEffect(() => {
-    const fetchOrders = () => {
-      const saved = localStorage.getItem("shababy_orders");
-      if (saved) setOrders(JSON.parse(saved));
-    };
-    fetchOrders();
-    window.addEventListener("storage", fetchOrders);
-    return () => window.removeEventListener("storage", fetchOrders);
-  }, []);
+  const deleteOrder = async (id) => {
+    if (!confirm("هل أنت متأكد من حذف هذا الطلب؟")) return;
 
-  const updateStatus = (id, newStatus) => {
-    const updated = orders.map((o) =>
-      o.id === id ? { ...o, status: newStatus } : o,
-    );
-    setOrders(updated);
-    localStorage.setItem("shababy_orders", JSON.stringify(updated));
-  };
+    const { error } = await supabase.from("orders").delete().eq("id", id);
 
-  const deleteOrder = (id) => {
-    if (confirm("هل أنت متأكد من حذف هذا الطلب؟")) {
-      const updated = orders.filter((o) => o.id !== id);
-      setOrders(updated);
-      localStorage.setItem("shababy_orders", JSON.stringify(updated));
+    if (error) {
+      alert("خطأ في حذف الطلب");
+      console.error(error);
+    } else {
+      fetchOrders();
     }
   };
 
@@ -81,61 +95,72 @@ export default function OrderList() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {orders.map((order) => (
-              <tr
-                key={order.id}
-                className="hover:bg-foreground/[0.02] transition-colors group"
-              >
-                <td className="px-8 py-6 font-black text-secondary">
-                  {order.id}
-                </td>
-                <td className="px-8 py-6">
-                  <div className="flex flex-col gap-1">
-                    <span className="font-bold text-foreground">
-                      {order.customer}
-                    </span>
-                    <span className="text-[10px] font-bold text-foreground/30">
-                      {order.phones?.[0]}
-                    </span>
-                  </div>
-                </td>
-                <td className="px-8 py-6 text-sm font-bold text-foreground/70 text-center">
-                  {order.product} (x{order.quantity})
-                </td>
-                <td className="px-8 py-6 font-black text-foreground text-center">
-                  {order.total}
-                </td>
-                <td className="px-8 py-6 text-center">
-                  <select
-                    value={order.status}
-                    onChange={(e) => updateStatus(order.id, e.target.value)}
-                    className={`px-4 py-2 rounded-full text-[10px] font-black border outline-none cursor-pointer appearance-none text-center ${getStatusStyle(order.status)}`}
-                  >
-                    <option value="new">طلب جديد</option>
-                    <option value="قيد التنفيذ">قيد التنفيذ</option>
-                    <option value="تم الشحن">تم الشحن</option>
-                    <option value="تم التسليم">تم التسليم</option>
-                  </select>
-                </td>
-                <td className="px-8 py-6">
-                  <div className="flex items-center gap-2 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => openOrder(order)}
-                      className="size-10 bg-foreground/5 rounded-xl flex items-center justify-center hover:bg-foreground hover:text-background transition-all"
-                    >
-                      👁️
-                    </button>
-                    <button
-                      onClick={() => deleteOrder(order.id)}
-                      className="size-10 bg-red-500/5 text-red-500 rounded-xl flex items-center justify-center hover:bg-red-500 hover:text-white transition-all"
-                    >
-                      🗑️
-                    </button>
-                  </div>
+            {loading ? (
+              <tr>
+                <td
+                  colSpan="6"
+                  className="px-8 py-20 text-center font-bold text-foreground/20 animate-pulse"
+                >
+                  جاري تحميل الطلبات...
                 </td>
               </tr>
-            ))}
-            {orders.length === 0 && (
+            ) : orders.length > 0 ? (
+              orders.map((order) => (
+                <tr
+                  key={order.id}
+                  className="hover:bg-foreground/[0.02] transition-colors group"
+                >
+                  <td className="px-8 py-6 font-black text-secondary">
+                    {order.id.slice(0, 8)}
+                  </td>
+                  <td className="px-8 py-6">
+                    <div className="flex flex-col gap-1">
+                      <span className="font-bold text-foreground">
+                        {order.customer_name}
+                      </span>
+                      <span className="text-[10px] font-bold text-foreground/30">
+                        {order.customer_phone}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-8 py-6 text-sm font-bold text-foreground/70 text-center">
+                    {/* Assuming items is an array of strings or objects */}
+                    {Array.isArray(order.items) ? order.items.length : 0} منتجات
+                  </td>
+                  <td className="px-8 py-6 font-black text-foreground text-center">
+                    {order.total_amount} EGP
+                  </td>
+                  <td className="px-8 py-6 text-center">
+                    <select
+                      value={order.status}
+                      onChange={(e) => updateStatus(order.id, e.target.value)}
+                      className={`px-4 py-2 rounded-full text-[10px] font-black border outline-none cursor-pointer appearance-none text-center ${getStatusStyle(order.status)}`}
+                    >
+                      <option value="new">طلب جديد</option>
+                      <option value="قيد التنفيذ">قيد التنفيذ</option>
+                      <option value="تم الشحن">تم الشحن</option>
+                      <option value="تم التسليم">تم التسليم</option>
+                    </select>
+                  </td>
+                  <td className="px-8 py-6">
+                    <div className="flex items-center gap-2 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => openOrder(order)}
+                        className="size-10 bg-foreground/5 rounded-xl flex items-center justify-center hover:bg-foreground hover:text-background transition-all"
+                      >
+                        👁️
+                      </button>
+                      <button
+                        onClick={() => deleteOrder(order.id)}
+                        className="size-10 bg-red-500/5 text-red-500 rounded-xl flex items-center justify-center hover:bg-red-500 hover:text-white transition-all"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            ) : (
               <tr>
                 <td
                   colSpan="6"
@@ -175,15 +200,15 @@ export default function OrderList() {
                   العميل
                 </span>
                 <span className="font-bold text-foreground">
-                  {selectedOrder.customer}
+                  {selectedOrder.customer_name}
                 </span>
               </div>
               <div className="flex flex-col gap-2">
                 <span className="text-[10px] font-black text-foreground/30 uppercase tracking-widest">
-                  الهواتف
+                  الهاتف
                 </span>
                 <span className="font-bold text-foreground">
-                  {selectedOrder.phones?.join(" / ")}
+                  {selectedOrder.customer_phone}
                 </span>
               </div>
               <div className="flex flex-col gap-2 col-span-2">
@@ -191,49 +216,40 @@ export default function OrderList() {
                   العنوان
                 </span>
                 <span className="font-bold text-foreground leading-relaxed">
-                  {selectedOrder.address}
+                  {selectedOrder.customer_address}
                 </span>
               </div>
               <div className="flex flex-col gap-2">
                 <span className="text-[10px] font-black text-foreground/30 uppercase tracking-widest">
-                  طريقة الدفع
-                </span>
-                <span className="px-3 py-1 bg-secondary/10 text-secondary rounded-full font-black text-[10px] w-fit">
-                  {selectedOrder.paymentMethod}
-                </span>
-              </div>
-              {selectedOrder.promoCode && (
-                <div className="flex flex-col gap-2">
-                  <span className="text-[10px] font-black text-foreground/30 uppercase tracking-widest">
-                    كود الخصم
-                  </span>
-                  <span className="px-3 py-1 bg-green-500/10 text-green-600 rounded-full font-black text-[10px] w-fit">
-                    {selectedOrder.promoCode}
-                  </span>
-                </div>
-              )}
-              <div className="flex flex-col gap-2">
-                <span className="text-[10px] font-black text-foreground/30 uppercase tracking-widest">
-                  التاريخ
+                  تاريخ الطلب
                 </span>
                 <span className="font-bold text-foreground">
-                  {selectedOrder.date}
+                  {new Date(selectedOrder.created_at).toLocaleString("ar-EG")}
                 </span>
               </div>
             </div>
 
-            <div className="p-6 bg-foreground/5 rounded-2xl flex justify-between items-center">
-              <div className="flex flex-col">
-                <span className="text-lg font-black text-foreground">
-                  {selectedOrder.product}
-                </span>
-                <span className="text-sm font-bold text-foreground/40">
-                  الكمية: {selectedOrder.quantity}
+            <div className="p-6 bg-foreground/5 rounded-2xl flex flex-col gap-4">
+              <span className="text-[10px] font-black text-foreground/30 uppercase tracking-widest">
+                العناصر المطلوبة
+              </span>
+              {(selectedOrder.items || []).map((item, idx) => (
+                <div
+                  key={idx}
+                  className="flex justify-between items-center text-sm"
+                >
+                  <span className="font-bold">{item.name || "منتج"}</span>
+                  <span className="font-black text-secondary">
+                    {item.price} EGP × {item.quantity || 1}
+                  </span>
+                </div>
+              ))}
+              <div className="border-t border-border pt-4 mt-2 flex justify-between items-center">
+                <span className="font-black">الإجمالي</span>
+                <span className="text-2xl font-black text-secondary">
+                  {selectedOrder.total_amount} EGP
                 </span>
               </div>
-              <span className="text-2xl font-black text-secondary">
-                {selectedOrder.total}
-              </span>
             </div>
           </div>
         </div>

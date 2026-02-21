@@ -1,36 +1,57 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
 
 export default function MessageList() {
   const [messages, setMessages] = useState([]);
   const [selectedMessage, setSelectedMessage] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadMessages = () => {
-      const saved = JSON.parse(
-        localStorage.getItem("shababy_messages") || "[]",
-      );
-      setMessages(saved);
-    };
-    loadMessages();
-    window.addEventListener("storage", loadMessages);
-    return () => window.removeEventListener("storage", loadMessages);
+    fetchMessages();
   }, []);
 
-  const deleteMessage = (id) => {
-    const updated = messages.filter((m) => m.id !== id);
-    setMessages(updated);
-    localStorage.setItem("shababy_messages", JSON.stringify(updated));
-    if (selectedMessage?.id === id) setSelectedMessage(null);
+  const fetchMessages = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("messages")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching messages:", error);
+    } else {
+      setMessages(data || []);
+    }
+    setLoading(false);
   };
 
-  const markAsRead = (id) => {
-    const updated = messages.map((m) =>
-      m.id === id ? { ...m, status: "read" } : m,
-    );
-    setMessages(updated);
-    localStorage.setItem("shababy_messages", JSON.stringify(updated));
+  const deleteMessage = async (id) => {
+    if (!confirm("هل أنت متأكد من حذف هذه الرسالة؟")) return;
+
+    const { error } = await supabase.from("messages").delete().eq("id", id);
+
+    if (error) {
+      alert("خطأ في حذف الرسالة");
+      console.error(error);
+    } else {
+      fetchMessages();
+      if (selectedMessage?.id === id) setSelectedMessage(null);
+    }
+  };
+
+  const markAsRead = async (id) => {
+    const { error } = await supabase
+      .from("messages")
+      .update({ status: "read" })
+      .eq("id", id);
+
+    if (error) {
+      console.error(error);
+    } else {
+      fetchMessages();
+    }
   };
 
   return (
@@ -50,7 +71,13 @@ export default function MessageList() {
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
         {/* Messages List */}
         <div className="xl:col-span-5 flex flex-col gap-4 max-h-[70vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-border">
-          {messages.length === 0 ? (
+          {loading ? (
+            <div className="bg-card border-2 border-dashed border-border p-12 rounded-[3rem] text-center flex flex-col items-center gap-4 animate-pulse">
+              <p className="font-bold text-foreground/40">
+                جاري تحميل الرسائل...
+              </p>
+            </div>
+          ) : messages.length === 0 ? (
             <div className="bg-card border-2 border-dashed border-border p-12 rounded-[3rem] text-center flex flex-col items-center gap-4">
               <span className="text-5xl opacity-20">📥</span>
               <p className="font-bold text-foreground/40">
@@ -79,18 +106,18 @@ export default function MessageList() {
                     <span
                       className={`font-black text-lg ${selectedMessage?.id === m.id ? "text-background" : "text-foreground"}`}
                     >
-                      {m.name}
+                      {m.full_name}
                     </span>
                     <span
                       className={`text-[10px] font-bold ${selectedMessage?.id === m.id ? "text-background/50" : "text-foreground/30"}`}
                     >
-                      {m.date}
+                      {new Date(m.created_at).toLocaleDateString("ar-EG")}
                     </span>
                   </div>
                   <p
                     className={`text-sm font-bold line-clamp-1 ${selectedMessage?.id === m.id ? "text-background/70" : "text-foreground/50"}`}
                   >
-                    {m.message}
+                    {m.content}
                   </p>
                 </div>
               </div>
@@ -105,14 +132,16 @@ export default function MessageList() {
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-border pb-8">
                 <div className="flex flex-col gap-2">
                   <h3 className="text-4xl font-black text-foreground tracking-tighter">
-                    {selectedMessage.name}
+                    {selectedMessage.full_name}
                   </h3>
                   <div className="flex items-center gap-3">
                     <span className="text-xs font-black text-background bg-foreground px-3 py-1 rounded-full uppercase">
                       المرسل
                     </span>
                     <span className="text-sm font-bold text-foreground/40">
-                      {selectedMessage.date}
+                      {new Date(selectedMessage.created_at).toLocaleString(
+                        "ar-EG",
+                      )}
                     </span>
                   </div>
                 </div>
@@ -129,18 +158,14 @@ export default function MessageList() {
               <div className="flex flex-col gap-8">
                 <div className="flex flex-col gap-3">
                   <span className="text-xs font-black text-foreground/30 uppercase tracking-widest mr-2">
-                    وسيلة التواصل
+                    وسيلة التواصل (البريد الإلكتروني)
                   </span>
                   <div className="bg-foreground/5 p-6 rounded-3xl border border-border flex items-center justify-between">
                     <span className="text-xl font-black text-foreground">
-                      {selectedMessage.contact}
+                      {selectedMessage.email}
                     </span>
                     <a
-                      href={
-                        selectedMessage.contact.includes("@")
-                          ? `mailto:${selectedMessage.contact}`
-                          : `tel:${selectedMessage.contact}`
-                      }
+                      href={`mailto:${selectedMessage.email}`}
                       className="px-6 py-2 bg-foreground text-background rounded-full text-xs font-black hover:scale-105 active:scale-95 transition-all"
                     >
                       تواصل الآن
@@ -154,7 +179,7 @@ export default function MessageList() {
                   </span>
                   <div className="bg-foreground/5 p-8 rounded-[2.5rem] border border-border min-h-[200px]">
                     <p className="text-lg font-bold text-foreground leading-relaxed">
-                      {selectedMessage.message}
+                      {selectedMessage.content}
                     </p>
                   </div>
                 </div>

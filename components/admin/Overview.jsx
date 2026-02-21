@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
 
 export default function Overview() {
   const [stats, setStats] = useState([
@@ -36,35 +37,45 @@ export default function Overview() {
   const [salesData, setSalesData] = useState([]);
   const [recentOrders, setRecentOrders] = useState([]);
   const [topProducts, setTopProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Load data
-    const products = JSON.parse(
-      localStorage.getItem("shababy_products") || "[]",
-    );
-    const orders = JSON.parse(localStorage.getItem("shababy_orders") || "[]");
+    fetchOverviewData();
+  }, []);
 
-    // Helper to convert Arabic digits to Western digits
-    const toEn = (str) => str.replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d));
+  const fetchOverviewData = async () => {
+    setLoading(true);
+
+    // Fetch Products
+    const { data: products, error: prodErr } = await supabase
+      .from("products")
+      .select("*");
+    if (prodErr) console.error(prodErr);
+
+    // Fetch Orders
+    const { data: orders, error: orderErr } = await supabase
+      .from("orders")
+      .select("*");
+    if (orderErr) console.error(orderErr);
+
+    const safeProds = products || [];
+    const safeOrders = orders || [];
 
     // Calculate Stats
-    const totalRevenue = orders.reduce((acc, curr) => {
-      const val =
-        typeof curr.total === "string"
-          ? parseFloat(curr.total.replace("$", "").replace("EGP", ""))
-          : curr.total;
-      return acc + (val || 0);
-    }, 0);
-    const activeOrders = orders.filter(
+    const totalRevenue = safeOrders.reduce(
+      (acc, curr) => acc + (Number(curr.total_amount) || 0),
+      0,
+    );
+    const activeOrders = safeOrders.filter(
       (o) => o.status === "قيد التنفيذ",
     ).length;
     const avgRating =
-      products.length > 0
+      safeProds.length > 0
         ? (
-            products.reduce(
+            safeProds.reduce(
               (acc, curr) => acc + (parseFloat(curr.rating) || 0),
               0,
-            ) / products.length
+            ) / safeProds.length
           ).toFixed(1)
         : "٠";
 
@@ -85,7 +96,7 @@ export default function Overview() {
       },
       {
         label: "إجمالي المنتجات",
-        value: products.length.toString(),
+        value: safeProds.length.toString(),
         icon: "🏷️",
         color: "text-purple-500",
         bg: "bg-purple-500/10",
@@ -115,29 +126,37 @@ export default function Overview() {
       d.setDate(d.getDate() - i);
       last7Days.push({
         label: days[d.getDay()],
-        dateStr: d.toLocaleDateString("ar-EG"),
+        date: d.toISOString().split("T")[0],
         count: 0,
       });
     }
 
-    orders.forEach((order) => {
-      const dayMatch = last7Days.find(
-        (d) => toEn(d.dateStr) === toEn(order.date),
-      );
+    safeOrders.forEach((order) => {
+      const orderDate = new Date(order.created_at).toISOString().split("T")[0];
+      const dayMatch = last7Days.find((d) => d.date === orderDate);
       if (dayMatch) dayMatch.count++;
     });
 
     const maxOrders = Math.max(...last7Days.map((d) => d.count), 1);
     const dynamicData = last7Days.map((d) => ({
       day: d.label,
-      val: (d.count / maxOrders) * 100 || 5, // Minimum 5% height for empty days to keep it look "premium"
+      val: (d.count / maxOrders) * 100 || 5,
       count: d.count,
     }));
 
     setSalesData(dynamicData);
-    setRecentOrders(orders.slice(-3).reverse());
-    setTopProducts(products.slice(0, 3));
-  }, []);
+    setRecentOrders(
+      safeOrders.slice(0, 3).map((o) => ({
+        id: o.id.slice(0, 8),
+        customer: o.customer_name,
+        date: new Date(o.created_at).toLocaleDateString("ar-EG"),
+        total: `${o.total_amount} EGP`,
+        status: o.status,
+      })),
+    );
+    setTopProducts(safeProds.slice(0, 3));
+    setLoading(false);
+  };
 
   const getStatusStyle = (status) => {
     const maps = {

@@ -1,50 +1,73 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
 
 export default function CategoryList() {
   const [categories, setCategories] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
   const [formData, setFormData] = useState({ name: "", icon: "📦" });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const saved = localStorage.getItem("shababy_categories");
-    if (saved) {
-      setCategories(JSON.parse(saved));
-    } else {
-      const defaults = [
-        { id: 1, name: "أحذية", productCount: 0, icon: "👟" },
-        { id: 2, name: "ملابس", productCount: 0, icon: "👕" },
-        { id: 3, name: "إكسسوارات", productCount: 0, icon: "⌚" },
-      ];
-      setCategories(defaults);
-      localStorage.setItem("shababy_categories", JSON.stringify(defaults));
-    }
+    fetchCategories();
   }, []);
 
-  const handleSave = (e) => {
-    e.preventDefault();
-    let updated;
-    if (editingCategory) {
-      updated = categories.map((c) =>
-        c.id === editingCategory.id ? { ...c, ...formData } : c,
-      );
+  const fetchCategories = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("categories")
+      .select("*")
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Error fetching categories:", error);
     } else {
-      updated = [
-        ...categories,
-        { ...formData, id: Date.now(), productCount: 0 },
-      ];
+      setCategories(data || []);
     }
-    setCategories(updated);
-    localStorage.setItem("shababy_categories", JSON.stringify(updated));
+    setLoading(false);
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+
+    if (editingCategory) {
+      const { error } = await supabase
+        .from("categories")
+        .update({ name: formData.name, icon: formData.icon })
+        .eq("id", editingCategory.id);
+
+      if (error) {
+        alert("خطأ في تحديث التصنيف");
+        console.error(error);
+      }
+    } else {
+      const { error } = await supabase
+        .from("categories")
+        .insert([{ name: formData.name, icon: formData.icon }]);
+
+      if (error) {
+        alert("خطأ في إضافة التصنيف");
+        console.error(error);
+      }
+    }
+
+    fetchCategories();
     closeModal();
   };
 
-  const deleteCategory = (id) => {
-    const updated = categories.filter((c) => c.id !== id);
-    setCategories(updated);
-    localStorage.setItem("shababy_categories", JSON.stringify(updated));
+  const deleteCategory = async (id) => {
+    if (!confirm("هل أنت متأكد من حذف هذا التصنيف؟")) return;
+
+    const { error } = await supabase.from("categories").delete().eq("id", id);
+
+    if (error) {
+      alert("خطأ في حذف التصنيف");
+      console.error(error);
+    } else {
+      fetchCategories();
+    }
   };
 
   const openModal = (category = null) => {
@@ -82,38 +105,48 @@ export default function CategoryList() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {categories.map((cat) => (
-          <div
-            key={cat.id}
-            className="bg-card border border-border p-10 rounded-[2.5rem] flex flex-col items-center gap-6 shadow-sm hover:shadow-xl transition-all group relative overflow-hidden"
-          >
-            <div className="size-20 bg-foreground/5 rounded-3xl flex items-center justify-center text-4xl group-hover:scale-110 transition-transform duration-500">
-              {cat.icon}
-            </div>
-            <div className="text-center">
-              <h3 className="text-2xl font-black text-foreground">
-                {cat.name}
-              </h3>
-              <p className="text-sm font-bold text-foreground/40">
-                تصنيف فعّال في المتجر
-              </p>
-            </div>
-            <div className="flex gap-2 w-full mt-4">
-              <button
-                onClick={() => openModal(cat)}
-                className="flex-1 py-3 bg-foreground/5 rounded-xl font-bold hover:bg-foreground hover:text-background transition-all"
-              >
-                تعديل
-              </button>
-              <button
-                onClick={() => deleteCategory(cat.id)}
-                className="px-5 py-3 bg-red-500/5 text-red-500 rounded-xl font-bold hover:bg-red-500 hover:text-white transition-all"
-              >
-                حذف
-              </button>
-            </div>
+        {loading ? (
+          <div className="col-span-full py-20 text-center font-bold text-foreground/20 text-2xl animate-pulse">
+            جاري تحميل التصنيفات...
           </div>
-        ))}
+        ) : categories.length > 0 ? (
+          categories.map((cat) => (
+            <div
+              key={cat.id}
+              className="bg-card border border-border p-10 rounded-[2.5rem] flex flex-col items-center gap-6 shadow-sm hover:shadow-xl transition-all group relative overflow-hidden"
+            >
+              <div className="size-20 bg-foreground/5 rounded-3xl flex items-center justify-center text-4xl group-hover:scale-110 transition-transform duration-500">
+                {cat.icon}
+              </div>
+              <div className="text-center">
+                <h3 className="text-2xl font-black text-foreground">
+                  {cat.name}
+                </h3>
+                <p className="text-sm font-bold text-foreground/40">
+                  تصنيف فعّال في المتجر
+                </p>
+              </div>
+              <div className="flex gap-2 w-full mt-4">
+                <button
+                  onClick={() => openModal(cat)}
+                  className="flex-1 py-3 bg-foreground/5 rounded-xl font-bold hover:bg-foreground hover:text-background transition-all"
+                >
+                  تعديل
+                </button>
+                <button
+                  onClick={() => deleteCategory(cat.id)}
+                  className="px-5 py-3 bg-red-500/5 text-red-500 rounded-xl font-bold hover:bg-red-500 hover:text-white transition-all"
+                >
+                  حذف
+                </button>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="col-span-full py-20 text-center font-bold text-foreground/20 text-2xl">
+            لا توجد تصنيفات حالياً
+          </div>
+        )}
       </div>
 
       {isModalOpen && (

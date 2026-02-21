@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
 
 export default function ProductList() {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -14,7 +16,8 @@ export default function ProductList() {
     rating: 5,
     stock: 10,
     hasDiscount: false,
-    category: "أحذية",
+    category: "",
+    category_id: null,
     image: "",
     imageSource: "link",
     discountPercent: 0,
@@ -23,33 +26,38 @@ export default function ProductList() {
   });
 
   useEffect(() => {
-    // Load products
-    const savedProducts = localStorage.getItem("shababy_products");
-    if (savedProducts) {
-      setProducts(JSON.parse(savedProducts));
-    } else {
-      const defaults = [
-        {
-          id: 1,
-          name: "حذاء كاجوال راقي",
-          description: "مريح جداً وأنيق",
-          price: "120",
-          category: "أحذية",
-          stock: 15,
-          rating: 5,
-          hasDiscount: true,
-        },
-      ];
-      setProducts(defaults);
-      localStorage.setItem("shababy_products", JSON.stringify(defaults));
-    }
-
-    // Load categories
-    const savedCats = localStorage.getItem("shababy_categories");
-    if (savedCats) {
-      setCategories(JSON.parse(savedCats));
-    }
+    fetchData();
   }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
+    // Fetch Categories
+    const { data: cats, error: catErr } = await supabase
+      .from("categories")
+      .select("*");
+    if (catErr) console.error(catErr);
+    setCategories(cats || []);
+
+    // Fetch Products
+    const { data: prods, error: prodErr } = await supabase
+      .from("products")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (prodErr) {
+      console.error(prodErr);
+    } else {
+      // Map database fields to UI fields if naming differs
+      const mappedProds = (prods || []).map((p) => ({
+        ...p,
+        hasDiscount: p.has_discount,
+        discountPercent: p.discount_percent,
+        paymentSettings: p.payment_settings,
+      }));
+      setProducts(mappedProds);
+    }
+    setLoading(false);
+  };
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
@@ -66,37 +74,68 @@ export default function ProductList() {
     }
   };
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
-    let updated;
-    const finalProduct = {
-      ...formData,
-      id: editingProduct ? editingProduct.id : Date.now(),
-      discountPercent: Number(formData.discountPercent) || 0,
+
+    const dbData = {
+      name: formData.name,
+      description: formData.description,
+      price: Number(formData.price),
+      rating: Number(formData.rating),
+      stock: Number(formData.stock),
+      has_discount: formData.hasDiscount,
+      discount_percent: Number(formData.discountPercent),
+      category_name: formData.category,
+      category_id: formData.category_id,
+      image: formData.image,
+      images: formData.images,
+      payment_settings: formData.paymentSettings,
+      updated_at: new Date(),
     };
 
     if (editingProduct) {
-      updated = products.map((p) =>
-        p.id === editingProduct.id ? finalProduct : p,
-      );
+      const { error } = await supabase
+        .from("products")
+        .update(dbData)
+        .eq("id", editingProduct.id);
+
+      if (error) {
+        alert("خطأ في تحديث المنتج");
+        console.error(error);
+      }
     } else {
-      updated = [...products, finalProduct];
+      const { error } = await supabase.from("products").insert([dbData]);
+
+      if (error) {
+        alert("خطأ في إضافة المنتج");
+        console.error(error);
+      }
     }
-    setProducts(updated);
-    localStorage.setItem("shababy_products", JSON.stringify(updated));
+
+    fetchData();
     closeModal();
   };
 
-  const deleteProduct = (id) => {
-    const updated = products.filter((p) => p.id !== id);
-    setProducts(updated);
-    localStorage.setItem("shababy_products", JSON.stringify(updated));
+  const deleteProduct = async (id) => {
+    if (!confirm("هل أنت متأكد من حذف هذا المنتج؟")) return;
+
+    const { error } = await supabase.from("products").delete().eq("id", id);
+
+    if (error) {
+      alert("خطأ في حذف المنتج");
+      console.error(error);
+    } else {
+      fetchData();
+    }
   };
 
   const openModal = (product = null) => {
     if (product) {
       setEditingProduct(product);
-      setFormData(product);
+      setFormData({
+        ...product,
+        imageSource: product.image?.startsWith("data:") ? "upload" : "link",
+      });
     } else {
       setEditingProduct(null);
       setFormData({
@@ -106,7 +145,8 @@ export default function ProductList() {
         rating: 5,
         stock: 10,
         hasDiscount: false,
-        category: categories.length > 0 ? categories[0].name : "أحذية",
+        category: categories.length > 0 ? categories[0].name : "",
+        category_id: categories.length > 0 ? categories[0].id : null,
         image: "",
         imageSource: "link",
         discountPercent: 0,
@@ -155,67 +195,87 @@ export default function ProductList() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {products.map((p) => (
-              <tr
-                key={p.id}
-                className="hover:bg-foreground/[0.02] transition-colors group"
-              >
-                <td className="px-8 py-6">
-                  <div className="flex items-center gap-4">
-                    <div className="size-14 bg-foreground/5 rounded-xl border border-border p-2 shrink-0">
-                      <img
-                        src={
-                          p.image ||
-                          "https://raw.githubusercontent.com/prebuiltui/prebuiltui/main/assets/card/productImageWithoutBg.png"
-                        }
-                        alt=""
-                        className="w-full h-full object-contain"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1 overflow-hidden">
-                      <span className="font-bold text-foreground truncate max-w-[200px]">
-                        {p.name}
-                      </span>
-                      <span className="text-[10px] text-foreground/30 truncate max-w-[200px] font-bold">
-                        {p.description}
-                      </span>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-8 py-6 text-sm font-bold text-foreground/50">
-                  {p.category}
-                </td>
-                <td className="px-8 py-6 text-sm font-black text-foreground text-center">
-                  {p.price} EGP
-                </td>
-                <td className="px-8 py-6 text-center">
-                  <span
-                    className={`px-3 py-1 rounded-full text-[10px] font-black ${p.stock < 5 ? "bg-red-500/10 text-red-600" : "bg-green-500/10 text-green-600"}`}
-                  >
-                    {p.stock} قطعة
-                  </span>
-                </td>
-                <td className="px-8 py-6 text-sm font-black text-yellow-600 text-center flex items-center justify-center gap-1">
-                  ⭐ {p.rating}
-                </td>
-                <td className="px-8 py-6">
-                  <div className="flex items-center gap-2 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => openModal(p)}
-                      className="size-10 bg-foreground/5 rounded-xl flex items-center justify-center hover:bg-foreground hover:text-background transition-all"
-                    >
-                      📝
-                    </button>
-                    <button
-                      onClick={() => deleteProduct(p.id)}
-                      className="size-10 bg-red-500/5 text-red-500 rounded-xl flex items-center justify-center hover:bg-red-500 hover:text-white transition-all"
-                    >
-                      🗑️
-                    </button>
-                  </div>
+            {loading ? (
+              <tr>
+                <td
+                  colSpan="6"
+                  className="px-8 py-20 text-center font-bold text-foreground/20 animate-pulse"
+                >
+                  جاري تحميل المنتجات...
                 </td>
               </tr>
-            ))}
+            ) : products.length > 0 ? (
+              products.map((p) => (
+                <tr
+                  key={p.id}
+                  className="hover:bg-foreground/[0.02] transition-colors group"
+                >
+                  <td className="px-8 py-6">
+                    <div className="flex items-center gap-4">
+                      <div className="size-14 bg-foreground/5 rounded-xl border border-border p-2 shrink-0">
+                        <img
+                          src={
+                            p.image ||
+                            "https://raw.githubusercontent.com/prebuiltui/prebuiltui/main/assets/card/productImageWithoutBg.png"
+                          }
+                          alt=""
+                          className="w-full h-full object-contain"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1 overflow-hidden">
+                        <span className="font-bold text-foreground truncate max-w-[200px]">
+                          {p.name}
+                        </span>
+                        <span className="text-[10px] text-foreground/30 truncate max-w-[200px] font-bold">
+                          {p.description}
+                        </span>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-8 py-6 text-sm font-bold text-foreground/50">
+                    {p.category_name || p.category}
+                  </td>
+                  <td className="px-8 py-6 text-sm font-black text-foreground text-center">
+                    {p.price} EGP
+                  </td>
+                  <td className="px-8 py-6 text-center">
+                    <span
+                      className={`px-3 py-1 rounded-full text-[10px] font-black ${p.stock < 5 ? "bg-red-500/10 text-red-600" : "bg-green-500/10 text-green-600"}`}
+                    >
+                      {p.stock} قطعة
+                    </span>
+                  </td>
+                  <td className="px-8 py-6 text-sm font-black text-yellow-600 text-center flex items-center justify-center gap-1">
+                    ⭐ {p.rating}
+                  </td>
+                  <td className="px-8 py-6">
+                    <div className="flex items-center gap-2 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => openModal(p)}
+                        className="size-10 bg-foreground/5 rounded-xl flex items-center justify-center hover:bg-foreground hover:text-background transition-all"
+                      >
+                        📝
+                      </button>
+                      <button
+                        onClick={() => deleteProduct(p.id)}
+                        className="size-10 bg-red-500/5 text-red-500 rounded-xl flex items-center justify-center hover:bg-red-500 hover:text-white transition-all"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td
+                  colSpan="6"
+                  className="px-8 py-20 text-center font-bold text-foreground/20"
+                >
+                  لا توجد منتجات مضافة
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -307,18 +367,28 @@ export default function ProductList() {
                   التصنيف
                 </label>
                 <select
-                  value={formData.category}
-                  onChange={(e) =>
-                    setFormData({ ...formData, category: e.target.value })
-                  }
+                  value={formData.category_id || ""}
+                  onChange={(e) => {
+                    const cat = categories.find((c) => c.id === e.target.value);
+                    setFormData({
+                      ...formData,
+                      category_id: e.target.value,
+                      category: cat?.name,
+                    });
+                  }}
                   className="w-full bg-foreground/5 border border-border p-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-secondary/50 font-bold appearance-none"
                 >
+                  <option value="" disabled>
+                    اختر التصنيف
+                  </option>
                   {categories.map((c) => (
-                    <option key={c.id} value={c.name}>
+                    <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
                   ))}
-                  {categories.length === 0 && <option>لا توجد تصنيفات</option>}
+                  {categories.length === 0 && (
+                    <option disabled>لا توجد تصنيفات</option>
+                  )}
                 </select>
               </div>
               <div className="flex flex-col gap-2">
