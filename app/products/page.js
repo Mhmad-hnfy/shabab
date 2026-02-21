@@ -2,26 +2,43 @@
 
 import React, { useState, useEffect } from "react";
 import Card from "@/components/Card";
+import { supabase } from "@/lib/supabase";
 
 export default function ProductsPage() {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("الكل");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Load products
-    const savedProducts = JSON.parse(
-      localStorage.getItem("shababy_products") || "[]",
-    );
-    setProducts(savedProducts);
-
-    // Load categories
-    const savedCategories = JSON.parse(
-      localStorage.getItem("shababy_categories") || "[]",
-    );
-    setCategories(["الكل", ...savedCategories.map((c) => c.name)]);
+    fetchData();
   }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
+
+    const { data: cats } = await supabase
+      .from("categories")
+      .select("*")
+      .order("name");
+    setCategories(["الكل", ...(cats || []).map((c) => c.name)]);
+
+    const { data: prods } = await supabase
+      .from("products")
+      .select("*, categories(name)")
+      .order("created_at", { ascending: false });
+
+    setProducts(
+      (prods || []).map((p) => ({
+        ...p,
+        category_name: p.categories?.name,
+        category: p.categories?.name || p.category_name,
+      })),
+    );
+
+    setLoading(false);
+  };
 
   const filteredProducts = products.filter((p) => {
     if (!p.name) return false;
@@ -30,7 +47,9 @@ export default function ProductsPage() {
       p.name.toLowerCase().includes(searchTerm) ||
       (p.description && p.description.toLowerCase().includes(searchTerm));
     const matchesCategory =
-      selectedCategory === "الكل" || p.category === selectedCategory;
+      selectedCategory === "الكل" ||
+      p.category === selectedCategory ||
+      p.category_name === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
@@ -82,7 +101,16 @@ export default function ProductsPage() {
         </div>
 
         {/* Products Grid */}
-        {filteredProducts.length > 0 ? (
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+            {[...Array(8)].map((_, i) => (
+              <div
+                key={i}
+                className="h-80 bg-card border border-border rounded-[2.5rem] animate-pulse"
+              />
+            ))}
+          </div>
+        ) : filteredProducts.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
             {filteredProducts.map((p, idx) => (
               <Card key={p.id} product={p} index={idx} />

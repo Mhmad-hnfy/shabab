@@ -228,12 +228,22 @@ export default function CheckoutPage() {
                 </div>
                 <div className="flex flex-col gap-2">
                   <span className="px-3 py-1 bg-secondary/10 text-secondary text-[10px] font-black rounded-full w-fit">
-                    {product.category}
+                    {product.category || product.category_name}
                   </span>
                   <h2 className="text-3xl font-black text-foreground">
                     {product.name}
                   </h2>
-                  <div className="flex items-center gap-2">
+                  {product.description && (
+                    <p className="text-sm font-bold text-foreground/50 leading-relaxed">
+                      {product.description}
+                    </p>
+                  )}
+                  {product.details && (
+                    <p className="text-xs font-bold text-foreground/35 leading-relaxed border-t border-border/50 pt-2 mt-1 whitespace-pre-wrap">
+                      {product.details}
+                    </p>
+                  )}
+                  <div className="flex items-center gap-2 mt-2">
                     <span className="text-2xl font-black text-secondary">
                       {(
                         parseFloat(product.price) *
