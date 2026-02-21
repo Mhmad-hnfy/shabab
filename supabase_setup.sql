@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS public.products (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT,
+    details TEXT, -- Detailed product info shown on product page
     price NUMERIC NOT NULL DEFAULT 0,
     rating NUMERIC DEFAULT 5,
     stock INTEGER DEFAULT 0,

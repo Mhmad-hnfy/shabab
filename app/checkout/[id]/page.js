@@ -93,20 +93,24 @@ export default function CheckoutPage() {
     );
 
   // Calculate pricing based on productsInCart
+  // discount_percent comes from Supabase (snake_case), discountPercent from localStorage (legacy)
   const subtotal = productsInCart.reduce((sum, p) => {
-    const disc =
-      p.discountPercent > 0
-        ? parseFloat(p.price) * (p.discountPercent / 100)
-        : 0;
+    const discPct = p.discount_percent ?? p.discountPercent ?? 0;
+    const disc = discPct > 0 ? parseFloat(p.price) * (discPct / 100) : 0;
     return sum + (parseFloat(p.price) - disc) * p.quantity;
   }, 0);
+
+  // Shipping cost - 0 means free
+  const shippingCost = settings?.shippingCost
+    ? parseFloat(settings.shippingCost)
+    : 0;
 
   let promoDiscount = 0;
   if (appliedPromo) {
     promoDiscount = subtotal * (appliedPromo.discountPercent / 100);
   }
 
-  const total = subtotal - promoDiscount;
+  const total = subtotal - promoDiscount + shippingCost;
 
   const handleApplyPromo = async () => {
     setPromoError("");
@@ -172,12 +176,13 @@ export default function CheckoutPage() {
     : [product.image, ...(product.images || [])].filter(Boolean);
 
   const isMethodSupported = (method) => {
-    const globalEnabled = settings.paymentMethods[method];
+    const globalEnabled = settings?.paymentMethods?.[method];
     if (!globalEnabled) return false;
-    // Check if ALL products in cart support this method
-    return productsInCart.every(
-      (p) => !p.paymentSettings || p.paymentSettings[method] === true,
-    );
+    // payment_settings comes from Supabase (snake_case), paymentSettings from legacy
+    return productsInCart.every((p) => {
+      const ps = p.payment_settings ?? p.paymentSettings;
+      return !ps || ps[method] === true;
+    });
   };
 
   return (
@@ -344,7 +349,13 @@ export default function CheckoutPage() {
               )}
               <div className="flex justify-between text-foreground/40 font-bold">
                 <span>تكلفة الشحن</span>
-                <span className="text-green-500">مجاني</span>
+                {shippingCost > 0 ? (
+                  <span className="text-foreground font-black">
+                    {shippingCost.toFixed(2)} EGP
+                  </span>
+                ) : (
+                  <span className="text-green-500 font-black">مجاني 🎉</span>
+                )}
               </div>
               <div className="flex justify-between items-center pt-4">
                 <span className="text-2xl font-black">الإجمالي</span>

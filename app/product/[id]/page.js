@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Card from "@/components/Card";
+import { supabase } from "@/lib/supabase";
 
 export default function ProductDetails() {
   const { id } = useParams();
@@ -18,28 +19,39 @@ export default function ProductDetails() {
   });
 
   useEffect(() => {
-    const allProducts = JSON.parse(
-      localStorage.getItem("shababy_products") || "[]",
-    );
-    const found = allProducts.find((p) => p.id.toString() === id);
-
-    if (found) {
-      setProduct(found);
-      setActiveImage(found.image);
-
-      // Related products (same category, excluding current)
-      const related = allProducts
-        .filter((p) => p.category === found.category && p.id.toString() !== id)
-        .slice(0, 4);
-      setRelatedProducts(related);
-
-      // Load reviews
-      const savedReviews = JSON.parse(
-        localStorage.getItem(`shababy_reviews_${id}`) || "[]",
-      );
-      setReviews(savedReviews);
-    }
+    fetchProduct();
   }, [id]);
+
+  const fetchProduct = async () => {
+    const { data: found, error } = await supabase
+      .from("products")
+      .select("*, categories(name)")
+      .eq("id", id)
+      .single();
+
+    if (error || !found) return;
+
+    setProduct(found);
+    setActiveImage(found.image);
+
+    // Related products (same category, excluding current)
+    const { data: related } = await supabase
+      .from("products")
+      .select("*, categories(name)")
+      .eq("category_id", found.category_id)
+      .neq("id", id)
+      .limit(4);
+
+    setRelatedProducts(
+      (related || []).map((p) => ({ ...p, category_name: p.categories?.name })),
+    );
+
+    // Reviews still local for now
+    const savedReviews = JSON.parse(
+      localStorage.getItem(`shababy_reviews_${id}`) || "[]",
+    );
+    setReviews(savedReviews);
+  };
 
   const handleAddToCart = () => {
     const cart = JSON.parse(localStorage.getItem("shababy_cart") || "[]");
@@ -48,12 +60,10 @@ export default function ProductDetails() {
       existing.quantity += 1;
       localStorage.setItem("shababy_cart", JSON.stringify(cart));
     } else {
+      const discPct = product.discount_percent ?? 0;
       const finalPrice =
-        product.discountPercent > 0
-          ? (
-              parseFloat(product.price) *
-              (1 - product.discountPercent / 100)
-            ).toFixed(2)
+        discPct > 0
+          ? (parseFloat(product.price) * (1 - discPct / 100)).toFixed(2)
           : product.price;
 
       const newItem = {
@@ -91,12 +101,10 @@ export default function ProductDetails() {
       </div>
     );
 
+  const discPct = product.discount_percent ?? 0;
   const finalPrice =
-    product.discountPercent > 0
-      ? (
-          parseFloat(product.price) *
-          (1 - product.discountPercent / 100)
-        ).toFixed(2)
+    discPct > 0
+      ? (parseFloat(product.price) * (1 - discPct / 100)).toFixed(2)
       : product.price;
 
   const allImages = [product.image, ...(product.images || [])].filter(Boolean);
@@ -109,9 +117,9 @@ export default function ProductDetails() {
           {/* Gallery Section */}
           <div className="flex flex-col gap-6 sticky top-32">
             <div className="aspect-[4/5] bg-card border border-border rounded-[3rem] overflow-hidden p-10 flex items-center justify-center shadow-2xl relative group">
-              {product.discountPercent > 0 && (
+              {discPct > 0 && (
                 <div className="absolute top-8 left-8 px-6 py-2 bg-secondary text-white font-black rounded-full shadow-xl shadow-secondary/30 z-10 animate-bounce">
-                  خصم {product.discountPercent}%
+                  خصم {discPct}%
                 </div>
               )}
               <img
@@ -144,7 +152,7 @@ export default function ProductDetails() {
           <div className="flex flex-col gap-10">
             <div className="flex flex-col gap-4">
               <span className="px-4 py-1.5 bg-secondary/10 text-secondary text-xs font-black rounded-full w-fit uppercase tracking-widest">
-                {product.category}
+                {product.categories?.name || product.category_name}
               </span>
               <h1 className="text-5xl lg:text-6xl font-black text-foreground leading-tight">
                 {product.name}
@@ -163,19 +171,32 @@ export default function ProductDetails() {
               <span className="text-5xl font-black text-foreground">
                 {finalPrice} EGP
               </span>
-              {product.discountPercent > 0 && (
+              {discPct > 0 && (
                 <span className="text-2xl font-bold text-foreground/20 line-through">
                   {product.price} EGP
                 </span>
               )}
             </div>
 
+            {/* Short description */}
             <div className="flex flex-col gap-4">
               <h3 className="text-xl font-black text-foreground">وصف المنتج</h3>
               <p className="text-lg font-bold text-foreground/50 leading-relaxed whitespace-pre-wrap">
                 {product.description || "لا يوجد وصف متاح لهذا المنتج حالياً."}
               </p>
             </div>
+
+            {/* Detailed description - shown only if exists */}
+            {product.details && (
+              <div className="flex flex-col gap-4 p-6 bg-foreground/[0.03] border border-border rounded-[2rem]">
+                <h3 className="text-lg font-black text-foreground">
+                  تفاصيل إضافية
+                </h3>
+                <p className="text-base font-bold text-foreground/50 leading-relaxed whitespace-pre-wrap">
+                  {product.details}
+                </p>
+              </div>
+            )}
 
             {/* Inventory Status */}
             <div className="flex items-center gap-4 p-6 bg-foreground/5 rounded-[2rem] border border-border">

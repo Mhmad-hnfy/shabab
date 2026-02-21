@@ -80,6 +80,7 @@ export default function ProductList() {
     const dbData = {
       name: formData.name,
       description: formData.description,
+      details: formData.details || null,
       price: Number(formData.price),
       rating: Number(formData.rating),
       stock: Number(formData.stock),
@@ -348,16 +349,30 @@ export default function ProductList() {
 
             <div className="flex flex-col gap-2">
               <label className="text-xs font-black text-foreground/40 pr-2 uppercase">
-                وصف المنتج
+                وصف المنتج (مختصر — يظهر في بطاقة المنتج)
               </label>
               <textarea
                 value={formData.description}
                 onChange={(e) =>
                   setFormData({ ...formData, description: e.target.value })
                 }
-                className="w-full bg-foreground/5 border border-border p-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-secondary/50 font-bold min-h-[100px] resize-none"
-                placeholder="اكتب وصفاً جذاباً للمنتج..."
+                className="w-full bg-foreground/5 border border-border p-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-secondary/50 font-bold min-h-[80px] resize-none"
+                placeholder="وصف قصير يظهر في القائمة..."
                 required
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-black text-foreground/40 pr-2 uppercase">
+                تفاصيل المنتج (تفصيلية — تظهر في صفحة المنتج فقط)
+              </label>
+              <textarea
+                value={formData.details || ""}
+                onChange={(e) =>
+                  setFormData({ ...formData, details: e.target.value })
+                }
+                className="w-full bg-foreground/5 border border-border p-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-secondary/50 font-bold min-h-[120px] resize-none"
+                placeholder="اكتب تفاصيل شاملة عن المنتج: المواصفات، المقاسات، المواد، إلخ..."
               />
             </div>
 
