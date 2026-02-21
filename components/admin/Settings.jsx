@@ -10,6 +10,8 @@ export default function Settings() {
     fawry: true,
   });
 
+  const [shippingCost, setShippingCost] = useState(0);
+
   const [contactInfo, setContactInfo] = useState({
     checkoutNotice: "سيتم التواصل خلال 24 ساعة لتأكيد طلبكم",
     email: "contact@shababy.com",
@@ -27,10 +29,12 @@ export default function Settings() {
       const parsed = JSON.parse(saved);
       if (parsed.paymentMethods) setPaymentMethods(parsed.paymentMethods);
       if (parsed.contactInfo) setContactInfo(parsed.contactInfo);
+      if (parsed.shippingCost !== undefined)
+        setShippingCost(parsed.shippingCost);
     } else {
       localStorage.setItem(
         "shababy_settings",
-        JSON.stringify({ paymentMethods, contactInfo }),
+        JSON.stringify({ paymentMethods, contactInfo, shippingCost: 0 }),
       );
     }
   }, []);
@@ -39,18 +43,36 @@ export default function Settings() {
     if (isPayment) {
       const updatedMethods = { ...paymentMethods, [key]: value };
       setPaymentMethods(updatedMethods);
+      const current = JSON.parse(
+        localStorage.getItem("shababy_settings") || "{}",
+      );
       localStorage.setItem(
         "shababy_settings",
-        JSON.stringify({ paymentMethods: updatedMethods, contactInfo }),
+        JSON.stringify({ ...current, paymentMethods: updatedMethods }),
       );
     } else {
       const updatedInfo = { ...contactInfo, [key]: value };
       setContactInfo(updatedInfo);
+      const current = JSON.parse(
+        localStorage.getItem("shababy_settings") || "{}",
+      );
       localStorage.setItem(
         "shababy_settings",
-        JSON.stringify({ paymentMethods, contactInfo: updatedInfo }),
+        JSON.stringify({ ...current, contactInfo: updatedInfo }),
       );
     }
+  };
+
+  const updateShippingCost = (value) => {
+    const cost = parseFloat(value) || 0;
+    setShippingCost(cost);
+    const current = JSON.parse(
+      localStorage.getItem("shababy_settings") || "{}",
+    );
+    localStorage.setItem(
+      "shababy_settings",
+      JSON.stringify({ ...current, shippingCost: cost }),
+    );
   };
 
   return (
@@ -152,6 +174,30 @@ export default function Settings() {
                   className={`absolute top-1 size-6 bg-white rounded-full transition-all duration-300 ${paymentMethods.fawry ? "right-7" : "right-1"}`}
                 />
               </button>
+            </div>
+          </div>
+
+          {/* Shipping Cost */}
+          <div className="flex items-center justify-between p-6 bg-foreground/5 rounded-2xl border border-border">
+            <div className="flex flex-col gap-1">
+              <span className="font-black text-foreground text-lg">
+                🚚 مصاريف الشحن
+              </span>
+              <span className="text-xs font-bold text-foreground/40 italic">
+                0 = شحن مجاني
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="0"
+                step="0.5"
+                value={shippingCost}
+                onChange={(e) => updateShippingCost(e.target.value)}
+                className="w-28 bg-background border border-border p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-secondary/50 font-black text-center text-sm"
+                placeholder="0"
+              />
+              <span className="font-black text-foreground/40 text-sm">EGP</span>
             </div>
           </div>
         </div>

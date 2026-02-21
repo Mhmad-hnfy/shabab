@@ -237,11 +237,11 @@ export default function CheckoutPage() {
                     <span className="text-2xl font-black text-secondary">
                       {(
                         parseFloat(product.price) *
-                        (1 - product.discountPercent / 100)
+                        (1 - (product.discount_percent ?? 0) / 100)
                       ).toFixed(2)}{" "}
                       EGP
                     </span>
-                    {product.discountPercent > 0 && (
+                    {(product.discount_percent ?? 0) > 0 && (
                       <span className="text-sm font-bold text-foreground/20 line-through">
                         {product.price} EGP
                       </span>
@@ -270,7 +270,9 @@ export default function CheckoutPage() {
                       <span className="text-xs font-bold text-secondary">
                         {(
                           parseFloat(p.price) *
-                          (1 - p.discountPercent / 100)
+                          (1 -
+                            (p.discount_percent ?? p.discountPercent ?? 0) /
+                              100)
                         ).toFixed(2)}{" "}
                         EGP x {p.quantity}
                       </span>
@@ -282,20 +284,48 @@ export default function CheckoutPage() {
 
             {!isCartMode && (
               <div className="flex items-center justify-between p-6 bg-foreground/5 rounded-2xl">
-                <span className="font-bold text-foreground">الكمية</span>
+                <div className="flex flex-col gap-1">
+                  <span className="font-bold text-foreground">الكمية</span>
+                  {product?.stock > 0 && (
+                    <span className="text-[10px] font-bold text-foreground/30">
+                      متاح: {product.stock} قطعة
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-6">
                   <button
                     type="button"
-                    onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                    onClick={() => {
+                      const newQty = Math.max(
+                        1,
+                        productsInCart[0]?.quantity - 1,
+                      );
+                      setProductsInCart([
+                        { ...productsInCart[0], quantity: newQty },
+                      ]);
+                    }}
                     className="size-10 bg-foreground/5 border border-border rounded-xl font-black active:scale-90 transition-all"
                   >
                     -
                   </button>
-                  <span className="text-xl font-black">{quantity}</span>
+                  <span className="text-xl font-black">
+                    {productsInCart[0]?.quantity ?? 1}
+                  </span>
                   <button
                     type="button"
-                    onClick={() => setQuantity(quantity + 1)}
-                    className="size-10 bg-foreground/5 border border-border rounded-xl font-black active:scale-90 transition-all"
+                    onClick={() => {
+                      const maxStock = product?.stock ?? 999;
+                      const currentQty = productsInCart[0]?.quantity ?? 1;
+                      if (currentQty >= maxStock) return;
+                      setProductsInCart([
+                        { ...productsInCart[0], quantity: currentQty + 1 },
+                      ]);
+                    }}
+                    disabled={
+                      (productsInCart[0]?.quantity ?? 1) >=
+                      (product?.stock ?? 999)
+                    }
+                    className="size-10 bg-foreground/5 border border-border rounded-xl font-black active:scale-90 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     +
                   </button>
