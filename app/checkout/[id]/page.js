@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 export default function CheckoutPage() {
   const { id } = useParams();
@@ -29,35 +30,44 @@ export default function CheckoutPage() {
   });
 
   useEffect(() => {
-    const savedProducts = JSON.parse(
-      localStorage.getItem("shababy_products") || "[]",
-    );
+    fetchCheckoutData();
+  }, [id]);
+
+  const fetchCheckoutData = async () => {
+    setLoading(true);
 
     if (id === "cart") {
       setIsCartMode(true);
       const cart = JSON.parse(localStorage.getItem("shababy_cart") || "[]");
-      // Map cart items to enriched product data
-      const enriched = cart.map((item) => {
-        const full = savedProducts.find((p) => p.id === item.id);
-        return { ...item, ...full }; // Keep cart quantity, but get settings from full product
-      });
-      setProductsInCart(enriched);
-      setLoading(false);
+      if (cart.length > 0) {
+        const ids = cart.map((item) => item.id);
+        const { data: dbProducts } = await supabase
+          .from("products")
+          .select("*")
+          .in("id", ids);
+        const enriched = cart.map((item) => {
+          const full = dbProducts?.find((p) => p.id === item.id);
+          return { ...item, ...full };
+        });
+        setProductsInCart(enriched);
+      }
     } else {
-      const found = savedProducts.find((p) => p.id.toString() === id);
+      const { data: found } = await supabase
+        .from("products")
+        .select("*")
+        .eq("id", id)
+        .single();
       if (found) {
         setProduct(found);
         setProductsInCart([{ ...found, quantity: 1 }]);
         setActiveImage(found.image);
       }
-      setLoading(false);
     }
 
     const savedSettings = localStorage.getItem("shababy_settings");
     if (savedSettings) {
       const parsed = JSON.parse(savedSettings);
       setSettings(parsed);
-      // Set initial method to a valid one
       if (parsed.paymentMethods.cash)
         setFormData((prev) => ({ ...prev, paymentMethod: "عند الاستلام" }));
       else if (parsed.paymentMethods.visa)
@@ -65,7 +75,8 @@ export default function CheckoutPage() {
       else if (parsed.paymentMethods.wallet)
         setFormData((prev) => ({ ...prev, paymentMethod: "محفظة" }));
     }
-  }, [id]);
+    setLoading(false);
+  };
 
   if (loading)
     return (
@@ -97,13 +108,13 @@ export default function CheckoutPage() {
 
   const total = subtotal - promoDiscount;
 
-  const handleApplyPromo = () => {
+  const handleApplyPromo = async () => {
     setPromoError("");
+    // Promo codes still from localStorage as they haven't been moved to DB
     const promos = JSON.parse(localStorage.getItem("shababy_promos") || "[]");
     const found = promos.find(
       (p) => p.code === promoCode.toUpperCase() && p.isActive,
     );
-
     if (found) {
       setAppliedPromo(found);
       setPromoCode("");
@@ -112,40 +123,48 @@ export default function CheckoutPage() {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const orderId = `ORD-${Math.floor(Math.random() * 90000) + 10000}`;
-    const productNames = productsInCart
-      .map((p) => `${p.name} (x${p.quantity})`)
-      .join(", ");
+
+    const items = productsInCart.map((p) => ({
+      id: p.id,
+      name: p.name,
+      price: parseFloat(p.price) * (1 - (p.discount_percent || 0) / 100),
+      quantity: p.quantity,
+    }));
 
     const newOrder = {
-      id: orderId,
-      customer: formData.name,
-      phones: [formData.phone1, formData.phone2],
-      address: formData.address,
-      product: productNames,
-      quantity: productsInCart.reduce((sum, p) => sum + p.quantity, 0),
-      subtotal: `${subtotal.toFixed(2)} EGP`,
-      promoCode: appliedPromo ? appliedPromo.code : null,
-      total: `${total.toFixed(2)} EGP`,
-      paymentMethod: formData.paymentMethod,
-      date: new Date().toLocaleDateString("ar-EG"),
+      customer_name: formData.name,
+      customer_phone: formData.phone1,
+      customer_phone2: formData.phone2,
+      customer_address: formData.address,
+      items: items,
+      subtotal_amount: parseFloat(subtotal.toFixed(2)),
+      promo_code: appliedPromo ? appliedPromo.code : null,
+      promo_discount: parseFloat(promoDiscount.toFixed(2)),
+      total_amount: parseFloat(total.toFixed(2)),
+      payment_method: formData.paymentMethod,
       status: "new",
     };
 
-    const orders = JSON.parse(localStorage.getItem("shababy_orders") || "[]");
-    localStorage.setItem(
-      "shababy_orders",
-      JSON.stringify([...orders, newOrder]),
-    );
+    const { data, error } = await supabase
+      .from("orders")
+      .insert(newOrder)
+      .select()
+      .single();
+
+    if (error) {
+      alert("حدث خطأ أثناء تسجيل الطلب، يرجى المحاولة مرة أخرى.");
+      console.error(error);
+      return;
+    }
 
     if (isCartMode) {
       localStorage.removeItem("shababy_cart");
       window.dispatchEvent(new Event("cart-updated"));
     }
 
-    router.push(`/invoice/${orderId}`);
+    router.push(`/invoice/${data.id}`);
   };
 
   const allImages = isCartMode

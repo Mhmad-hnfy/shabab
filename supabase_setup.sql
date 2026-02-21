@@ -30,20 +30,24 @@ CREATE TABLE IF NOT EXISTS public.orders (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     customer_name TEXT NOT NULL,
     customer_phone TEXT,
+    customer_phone2 TEXT,
     customer_address TEXT,
-    total_amount NUMERIC NOT NULL DEFAULT 0,
-    status TEXT DEFAULT 'قيد التنفيذ', -- New, Shipped, Delivered, etc.
     items JSONB DEFAULT '[]',
+    subtotal_amount NUMERIC DEFAULT 0,
+    promo_code TEXT,
+    promo_discount NUMERIC DEFAULT 0,
+    total_amount NUMERIC NOT NULL DEFAULT 0,
+    payment_method TEXT DEFAULT 'عند الاستلام',
+    status TEXT DEFAULT 'new', -- new, قيد التنفيذ, تم الشحن, تم التسليم
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 4. Create Messages Table
 CREATE TABLE IF NOT EXISTS public.messages (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    name TEXT NOT NULL,
+    full_name TEXT NOT NULL,
     email TEXT,
-    subject TEXT,
-    message TEXT,
+    content TEXT,
     status TEXT DEFAULT 'new',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );

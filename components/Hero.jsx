@@ -2,30 +2,55 @@
 
 import React, { useState, useEffect } from "react";
 import Card from "./Card";
+import { supabase } from "@/lib/supabase";
 
 function ProductGrid() {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [activeCategory, setActiveCategory] = useState("الكل");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchAll = () => {
-      const savedProducts = localStorage.getItem("shababy_products");
-      if (savedProducts) setProducts(JSON.parse(savedProducts));
-
-      const savedCats = localStorage.getItem("shababy_categories");
-      if (savedCats) setCategories(JSON.parse(savedCats));
-    };
-
-    fetchAll();
-    window.addEventListener("storage", fetchAll);
-    return () => window.removeEventListener("storage", fetchAll);
+    fetchData();
   }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
+
+    // Fetch Categories
+    const { data: cats, error: catErr } = await supabase
+      .from("categories")
+      .select("*");
+    if (catErr) console.error(catErr);
+    else setCategories(cats || []);
+
+    // Fetch Products with category names
+    const { data: prods, error: prodErr } = await supabase.from("products")
+      .select(`
+        *,
+        categories (
+          name
+        )
+      `);
+
+    if (prodErr) {
+      console.error(prodErr);
+    } else {
+      // Map the joined category name to the product object for easy filtering
+      const mappedProds = prods.map((p) => ({
+        ...p,
+        category_name: p.categories?.name,
+      }));
+      setProducts(mappedProds || []);
+    }
+
+    setLoading(false);
+  };
 
   const filteredProducts =
     activeCategory === "الكل"
       ? products
-      : products.filter((p) => p.category === activeCategory);
+      : products.filter((p) => p.category_name === activeCategory);
 
   return (
     <section className="max-w-7xl mx-auto px-6 py-20 flex flex-col gap-16">
@@ -61,7 +86,16 @@ function ProductGrid() {
         </div>
       </div>
 
-      {filteredProducts.length > 0 ? (
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
+          {[1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="bg-foreground/5 rounded-[2rem] aspect-square animate-pulse"
+            />
+          ))}
+        </div>
+      ) : filteredProducts.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
           {filteredProducts.map((product, i) => (
             <Card key={product.id || i} product={product} index={i} />

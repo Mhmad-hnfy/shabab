@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 export default function ContactPage() {
   const [contactInfo, setContactInfo] = useState({
@@ -122,34 +123,31 @@ export default function ContactPage() {
 function ContactForm() {
   const [status, setStatus] = useState("idle"); // idle, sending, success
   const [formData, setFormData] = useState({
-    name: "",
-    contact: "",
-    message: "",
+    full_name: "",
+    email: "",
+    content: "",
   });
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setStatus("sending");
 
-    setTimeout(() => {
-      const messages = JSON.parse(
-        localStorage.getItem("shababy_messages") || "[]",
-      );
-      const newMessage = {
-        id: Date.now(),
-        ...formData,
-        date: new Date().toLocaleString("ar-EG"),
-        status: "new",
-      };
-      localStorage.setItem(
-        "shababy_messages",
-        JSON.stringify([newMessage, ...messages]),
-      );
-      setStatus("success");
-      setFormData({ name: "", contact: "", message: "" });
+    const { error } = await supabase.from("messages").insert({
+      full_name: formData.full_name,
+      email: formData.email,
+      content: formData.content,
+      status: "new",
+    });
 
+    if (error) {
+      console.error(error);
+      setStatus("idle");
+      alert("حدث خطأ أثناء الإرسال، يرجى المحاولة مرة أخرى.");
+    } else {
+      setStatus("success");
+      setFormData({ full_name: "", email: "", content: "" });
       setTimeout(() => setStatus("idle"), 5000);
-    }, 1500);
+    }
   };
 
   if (status === "success") {
@@ -188,8 +186,10 @@ function ContactForm() {
         <input
           required
           type="text"
-          value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+          value={formData.full_name}
+          onChange={(e) =>
+            setFormData({ ...formData, full_name: e.target.value })
+          }
           placeholder="مثال: أحمد محمد"
           className="w-full bg-foreground/5 border border-border p-5 rounded-3xl focus:outline-none focus:ring-2 focus:ring-secondary/50 font-bold text-lg transition-all"
         />
@@ -197,16 +197,14 @@ function ContactForm() {
 
       <div className="flex flex-col gap-2">
         <label className="text-xs font-black text-foreground/40 pr-2 uppercase">
-          وسيلة التواصل (تليفون أو إيميل)
+          البريد الإلكتروني
         </label>
         <input
           required
-          type="text"
-          value={formData.contact}
-          onChange={(e) =>
-            setFormData({ ...formData, contact: e.target.value })
-          }
-          placeholder="012xxxxxxx أو email@example.com"
+          type="email"
+          value={formData.email}
+          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+          placeholder="email@example.com"
           className="w-full bg-foreground/5 border border-border p-5 rounded-3xl focus:outline-none focus:ring-2 focus:ring-secondary/50 font-bold text-lg transition-all"
         />
       </div>
@@ -217,9 +215,9 @@ function ContactForm() {
         </label>
         <textarea
           required
-          value={formData.message}
+          value={formData.content}
           onChange={(e) =>
-            setFormData({ ...formData, message: e.target.value })
+            setFormData({ ...formData, content: e.target.value })
           }
           placeholder="كيف يمكننا مساعدتك اليوم؟"
           className="w-full bg-foreground/5 border border-border p-5 rounded-3xl focus:outline-none focus:ring-2 focus:ring-secondary/50 font-bold text-lg min-h-[150px] transition-all"
