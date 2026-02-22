@@ -2,15 +2,34 @@
 
 import React, { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 export default function InvoicePage() {
   const { id } = useParams();
   const [order, setOrder] = useState(null);
 
   useEffect(() => {
-    const orders = JSON.parse(localStorage.getItem("shababy_orders") || "[]");
-    const found = orders.find((o) => o.id === id);
-    if (found) setOrder(found);
+    const fetchOrder = async () => {
+      // First try to fetch from Supabase (new format)
+      const { data, error } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (data && !error) {
+        setOrder(data);
+      } else {
+        // Fallback to localStorage (legacy format)
+        const orders = JSON.parse(
+          localStorage.getItem("shababy_orders") || "[]",
+        );
+        const found = orders.find((o) => String(o.id) === String(id));
+        if (found) setOrder(found);
+      }
+    };
+
+    if (id) fetchOrder();
   }, [id]);
 
   if (!order)
@@ -47,20 +66,26 @@ export default function InvoicePage() {
             <span className="text-foreground/30 font-black uppercase tracking-widest text-xs">
               التاريخ
             </span>
-            <span className="font-black text-foreground">{order.date}</span>
+            <span className="font-black text-foreground">
+              {order.created_at
+                ? new Date(order.created_at).toLocaleDateString("ar-EG")
+                : order.date}
+            </span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-foreground/30 font-black uppercase tracking-widest text-xs">
               العميل
             </span>
-            <span className="font-black text-foreground">{order.customer}</span>
+            <span className="font-black text-foreground">
+              {order.customer_name || order.customer}
+            </span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-foreground/30 font-black uppercase tracking-widest text-xs">
               طريقة الدفع
             </span>
             <span className="px-4 py-1.5 bg-foreground/5 rounded-full font-black text-xs">
-              {order.paymentMethod}
+              {order.payment_method || order.paymentMethod}
             </span>
           </div>
         </div>
@@ -70,16 +95,31 @@ export default function InvoicePage() {
             تفاصيل الطلب
           </h3>
           <div className="flex items-center justify-between">
-            <div className="flex flex-col">
-              <span className="text-xl font-black text-foreground">
-                {order.product}
-              </span>
-              <span className="text-sm font-bold text-foreground/40">
-                الكمية: {order.quantity}
-              </span>
+            <div className="flex flex-col gap-1 w-2/3">
+              {order.items ? (
+                order.items.map((item, idx) => (
+                  <div key={idx} className="flex justify-between w-full">
+                    <span className="text-lg font-black text-foreground">
+                      {item.name}
+                    </span>
+                    <span className="text-sm font-bold text-foreground/40 shrink-0 mx-2">
+                      الكمية: {item.quantity}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <>
+                  <span className="text-xl font-black text-foreground">
+                    {order.product}
+                  </span>
+                  <span className="text-sm font-bold text-foreground/40">
+                    الكمية: {order.quantity}
+                  </span>
+                </>
+              )}
             </div>
-            <span className="text-xl font-black text-secondary">
-              {order.total}
+            <span className="text-xl font-black text-secondary whitespace-nowrap">
+              {order.total_amount ? `${order.total_amount} EGP` : order.total}
             </span>
           </div>
         </div>
@@ -89,9 +129,14 @@ export default function InvoicePage() {
             عنوان الشحن
           </h3>
           <p className="font-bold text-foreground leading-relaxed">
-            {order.address} <br />
-            تلفون: {order.phones[0]}{" "}
-            {order.phones[1] ? ` / ${order.phones[1]}` : ""}
+            {order.customer_address || order.address} <br />
+            تلفون: {order.customer_phone ||
+              (order.phones && order.phones[0])}{" "}
+            {order.customer_phone2
+              ? ` / ${order.customer_phone2}`
+              : order.phones && order.phones[1]
+                ? ` / ${order.phones[1]}`
+                : ""}
           </p>
         </div>
 

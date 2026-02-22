@@ -10,6 +10,7 @@ import Orders from "@/components/admin/OrderList";
 import Promos from "@/components/admin/PromoCodeList";
 import Settings from "@/components/admin/Settings";
 import Messages from "@/components/admin/MessageList";
+import { supabase } from "@/lib/supabase";
 
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -42,14 +43,21 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
-    const checkNotifications = () => {
-      const orders = JSON.parse(localStorage.getItem("shababy_orders") || "[]");
-      const messages = JSON.parse(
-        localStorage.getItem("shababy_messages") || "[]",
-      );
+    const checkNotifications = async () => {
+      const { data: dbOrders } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("status", "new")
+        .order("created_at", { ascending: false });
 
-      const newOrders = orders.filter((o) => o.status === "new");
-      const newMessages = messages.filter((m) => m.status === "new");
+      const { data: dbMessages } = await supabase
+        .from("messages")
+        .select("*")
+        .eq("status", "new")
+        .order("created_at", { ascending: false });
+
+      const newOrders = dbOrders || [];
+      const newMessages = dbMessages || [];
 
       setNotifications((prev) => {
         const hasMoreOrders = newOrders.length > prev.orders;
@@ -60,7 +68,7 @@ export default function AdminPage() {
           setToast({
             type: "order",
             title: "طلب جديد!",
-            text: `من: ${latest.customer}`,
+            text: `من: ${latest.customer_name || latest.customer}`,
           });
           const audio = new Audio(
             "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3",
@@ -71,7 +79,7 @@ export default function AdminPage() {
           setToast({
             type: "message",
             title: "رسالة جديدة!",
-            text: `من: ${latest.name}`,
+            text: `من: ${latest.full_name || latest.name}`,
           });
           const audio = new Audio(
             "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3",
