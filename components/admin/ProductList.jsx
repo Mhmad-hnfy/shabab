@@ -101,14 +101,14 @@ export default function ProductList() {
         .eq("id", editingProduct.id);
 
       if (error) {
-        alert("خطأ في تحديث المنتج");
+        alert("خطأ في تحديث المنتج: " + error.message);
         console.error(error);
       }
     } else {
       const { error } = await supabase.from("products").insert([dbData]);
 
       if (error) {
-        alert("خطأ في إضافة المنتج");
+        alert("خطأ في إضافة المنتج: " + error.message);
         console.error(error);
       }
     }
